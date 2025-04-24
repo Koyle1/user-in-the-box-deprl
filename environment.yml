@@ -195,4 +195,5 @@ dependencies:
       - wandb==0.15.2
       - werkzeug==2.3.3
       - xmltodict==0.13.0
+      - deprl
 prefix: /opt/conda/envs/uitb_gymnasium

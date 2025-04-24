@@ -145,4 +145,5 @@ dependencies:
     - urllib3==1.26.15
     - wandb==0.15.1
     - werkzeug==2.3.3
+    - deprl
 prefix: /opt/conda/envs/uitb

@@ -1,4 +1,4 @@
-import os.path
+ import os.path
 
 from setuptools import setup
 
@@ -32,6 +32,7 @@ setup(
        "numpy", "matplotlib", "scipy",
        "opencv-python",
        "ruamel.yaml",
-       "zmq"
+       "zmq",
+       "deprl"
    ],
 )
