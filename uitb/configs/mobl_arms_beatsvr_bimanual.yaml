@@ -1,4 +1,4 @@
-simulator_name: "beatsvr_neural_1e3"
+simulator_name: "beatsvr_neural_1e3_a2c"
 project: "unity"
 
 simulation:
@@ -43,7 +43,7 @@ simulation:
     info_keywords: [["AccumulatedErrors", "final"], ["AccumulatedCorrectSlices", "final"]]
 
 rl:
-  algorithm: "PPO"
+  algorithm: "A2C"
   policy_type: "policies.MultiInputActorCriticPolicyTanhActions"
   policy_kwargs:
     activation_fn: "torch.nn.LeakyReLU"

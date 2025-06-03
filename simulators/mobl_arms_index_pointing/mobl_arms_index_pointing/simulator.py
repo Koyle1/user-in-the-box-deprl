@@ -22,6 +22,8 @@ from .perception.base import Perception
 from .utils.rendering import Camera, Context
 from .utils.functions import output_path, parent_path, is_suitable_package_name, parse_yaml, write_yaml
 
+from collections import OrderedDict #Changed for A2C
+
 
 class Simulator(gym.Env):
   """
@@ -443,7 +445,7 @@ class Simulator(gym.Env):
   def _initialise_observation_space(self):
     """ Initialise observation space. """
     observation = self.get_observation()
-    obs_dict = dict()
+    obs_dict = OrderedDict() #Changed for dict() to OrderedDict()
     for module in self.perception.perception_modules:
       obs_dict[module.modality] = spaces.Box(dtype=np.float32, **module.get_observation_space_params())
     if "stateful_information" in observation:
@@ -555,10 +557,19 @@ class Simulator(gym.Env):
           self._render_stack.append(self._GUI_rendering())
         elif self._render_mode == "human":
           self._GUI_rendering_pygame()
-
         return obs, reward, terminated, truncated, info
 
 
+  def flatten_observation(self, obs_dict):
+    parts = []
+    for key in sorted(obs_dict.keys()):
+        part = obs_dict[key]
+        if isinstance(part, np.ndarray):
+            parts.append(part.flatten())
+        else:
+            raise TypeError(f"Unexpected type for key {key}: {type(part)}")
+    return np.concatenate(parts)
+    
   def get_observation(self, info=None):
     """ Returns an observation from the perception model.
 
@@ -568,14 +579,17 @@ class Simulator(gym.Env):
 
     # Get observation from perception
     observation = self.perception.get_observation(self._model, self._data, info)
+    
 
     # Add any stateful information that is required
     stateful_information = self.task.get_stateful_information(self._model, self._data)
+      
     if stateful_information.size > 0:  #TODO: define stateful_information (and encoder) that can be used as default, if no stateful information is provided (zero-size arrays do not work with sb3 currently...)
       observation["stateful_information"] = stateful_information
 
+    #observation = self.flatten_observation(observation)
     return observation
-
+        
   def get_llcobservation(self,action):
     """ Returns an observation from the perception model.
 
@@ -596,7 +610,11 @@ class Simulator(gym.Env):
     if stateful_information is not None:
       observation["stateful_information"] = stateful_information
     
-    return observation
+    ordered_obs = OrderedDict() #Added for A2C
+    for key in self.observation_space.spaces.keys():
+        ordered_obs[key] = observation[key]
+      
+    return observation #Changed from observation to ordered_obs (A2C)
 
 
   def reset(self, seed=None):
@@ -622,8 +640,8 @@ class Simulator(gym.Env):
       self._render_stack.append(self._GUI_rendering())
     elif self._render_mode == "human":
       self._GUI_rendering_pygame()
-
-    return self.get_observation(), info
+    obs = self.get_observation()
+    return obs, info #changed due ordereddict error
 
   def render(self):
     if self._render_mode == "rgb_array_list":

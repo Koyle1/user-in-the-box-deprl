@@ -28,6 +28,7 @@ from stable_baselines3.common.torch_layers import (
 from stable_baselines3.common.type_aliases import Schedule
 from stable_baselines3.common.policies import BasePolicy
 
+import copy
 
 class ActorCriticPolicyStdDecay(BasePolicy):
   """
@@ -709,3 +710,102 @@ class MultiInputActorCriticPolicyTanhActions(ActorCriticPolicyTanhActions):
       optimizer_class,
       optimizer_kwargs,
     )
+
+
+class CustomTD3Policy(MultiInputActorCriticPolicyTanhActions):
+    def __init__(
+        self,
+        observation_space: gym.spaces.Dict,
+        action_space: gym.spaces.Space,
+        lr_schedule: Schedule,
+        net_arch: Optional[List[Union[int, Dict[str, List[int]]]]] = None,
+        activation_fn: Type[nn.Module] = nn.Tanh,
+        ortho_init: bool = True,
+        use_sde: bool = False,
+        log_std_init: float = 0.0,
+        full_std: bool = True,
+        sde_net_arch: Optional[List[int]] = None,
+        use_expln: bool = False,
+        squash_output: bool = False,
+        features_extractor_class: Type[BaseFeaturesExtractor] = CombinedExtractor,
+        features_extractor_kwargs: Optional[Dict[str, Any]] = None,
+        normalize_images: bool = True,
+        optimizer_class: Type[th.optim.Optimizer] = th.optim.Adam,
+        optimizer_kwargs: Optional[Dict[str, Any]] = None,
+        wandb_id: str = None,
+    ):
+        super().__init__(
+            observation_space,
+            action_space,
+            lr_schedule,
+            net_arch,
+            activation_fn,
+            ortho_init,
+            use_sde,
+            log_std_init,
+            full_std,
+            sde_net_arch,
+            use_expln,
+            squash_output,
+            features_extractor_class,
+            features_extractor_kwargs,
+            normalize_images,
+            optimizer_class,
+            optimizer_kwargs,
+        )
+
+        if net_arch is None:
+            net_arch = [400, 300]  # TD3 default architecture
+
+        self.net_arch = net_arch
+        self.activation_fn = activation_fn
+        self.ortho_init = ortho_init
+
+        # Feature extractor
+        self.features_extractor = features_extractor_class(observation_space, **(features_extractor_kwargs or {}))
+        self.features_dim = self.features_extractor.features_dim
+
+        # MLP extractor for actor
+        self.mlp_extractor = MlpExtractor(self.features_dim, net_arch=self.net_arch, activation_fn=self.activation_fn, device=self.device)
+
+        # Actor network
+        self.action_net = nn.Sequential(
+            nn.Linear(self.net_arch[-1], self.action_space.shape[0]),
+            nn.Tanh(),
+        )
+        self.actor = nn.Sequential(self.mlp_extractor, self.action_net)
+        self.actor_target = copy.deepcopy(self.actor)
+        self.actor_target.eval()
+
+        # Critic networks (Q-networks)
+        qf_input_dim = self.features_dim + self.action_space.shape[0]
+
+        def make_critic():
+            return nn.Sequential(
+                nn.Linear(qf_input_dim, self.net_arch[-1]),
+                self.activation_fn(),
+                nn.Linear(self.net_arch[-1], self.net_arch[-1]),
+                self.activation_fn(),
+                nn.Linear(self.net_arch[-1], 1),
+            )
+
+        self.critic = nn.ModuleList([make_critic(), make_critic()])
+        self.critic_target = copy.deepcopy(self.critic)
+        for target in self.critic_target:
+            target.eval()
+
+        # Initialize weights if needed
+        if ortho_init:
+            self.apply(partial(self.init_weights, gain=nn.init.calculate_gain("relu")))
+
+        # Optimizer
+        self.optimizer = optimizer_class(self.parameters(), lr=lr_schedule(1), **(optimizer_kwargs or {}))
+
+    def forward(self, obs: th.Tensor) -> th.Tensor:
+        features = self.extract_features(obs, self.features_extractor)
+        latent_pi = self.mlp_extractor.forward_actor(features)
+        actions = self.action_net(latent_pi)
+        return actions
+
+    def _predict(self, observation: th.Tensor, deterministic: bool = True) -> th.Tensor:
+        return self.forward(observation)

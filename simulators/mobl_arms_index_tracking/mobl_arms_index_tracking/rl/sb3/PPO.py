@@ -225,6 +225,7 @@ class Monitor_customops(Monitor):
                 "wrap your env with Monitor_customops(env, path, allow_early_resets=True)"
             )
         self.info_keywords_acc_valuedict = defaultdict(list)
+        
         return super().reset(**kwargs)
 
     def step(self, action: ActType) -> Tuple[ObsType, SupportsFloat, bool, bool, Dict[str, Any]]:
@@ -261,6 +262,7 @@ class Monitor_customops(Monitor):
                 self.results_writer.write_row(ep_info)
             info["episode"] = ep_info
         self.total_steps += 1
+        print(f"[DEBUG] Step obs shape: {np.shape(observation)}")
         return observation, reward, terminated, truncated, info
 
 def make_vec_env(
@@ -323,8 +325,14 @@ def make_vec_env(
                     env = gym.make(env_id, **env_kwargs)
             else:
                 env = env_id(**env_kwargs)
+                env = _patch_env(env)  # patch for gym/gymnasium compatibility
+                obs = env.reset()
+                if isinstance(obs, tuple):
+                    obs = obs[0]  # unwrap (obs, info)
+                #assert isinstance(obs, np.ndarray), f"Expected ndarray, got {type(obs)}"
+                #print(f"[DEBUG] Env {rank} obs shape: {obs.shape}")
                 # Patch to support gym 0.21/0.26 and gymnasium
-                env = _patch_env(env)
+                #env = _patch_env(env)
 
             if seed is not None:
                 # Note: here we only seed the action space
